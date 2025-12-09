@@ -20,20 +20,32 @@ repositories {
 }
 
 dependencies {
-    // Spring Boot Web for REST endpoint
     implementation("org.springframework.boot:spring-boot-starter-web")
+    implementation("org.springframework.boot:spring-boot-starter-webflux")
+    implementation("jakarta.persistence:jakarta.persistence-api:3.1.0")
 
-    // Spring Kafka
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
     implementation("org.springframework.kafka:spring-kafka")
+    implementation("org.apache.kafka:kafka-streams:3.7.0")
 
-    // Avro
-    implementation("org.apache.avro:avro")
+    implementation("io.confluent:kafka-avro-serializer:7.5.0")
+    implementation("io.confluent:kafka-streams-avro-serde:7.5.0")
+    implementation("org.apache.avro:avro:1.11.3")
 
-    // Confluent Avro Serializer
-    implementation("io.confluent:kafka-avro-serializer:7.6.0")
+    implementation("org.springframework.boot:spring-boot-starter-webflux")
 
-    testImplementation("org.springframework.boot:spring-boot-starter-test")
+
+    implementation("org.springframework.boot:spring-boot-starter-data-jpa")
+    runtimeOnly("org.postgresql:postgresql:42.7.4")
+
+
+    compileOnly("org.projectlombok:lombok:1.18.32")
+    annotationProcessor("org.projectlombok:lombok:1.18.32")
+    testCompileOnly("org.projectlombok:lombok:1.18.32")
+    testAnnotationProcessor("org.projectlombok:lombok:1.18.32")
 }
+
 
 avro {
     stringType.set("String")

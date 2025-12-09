@@ -1,9 +1,18 @@
+genai:
+  base-url: http://localhost:8080
+
+openai:
+  api-key: ${OPENAI_API_KEY}
+  model: gpt-4.1-mini
+
+
 spring:
   kafka:
     bootstrap-servers: localhost:29092
 
     properties:
       schema.registry.url: http://localhost:8081
+      specific.avro.reader: true
 
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
@@ -14,3 +23,25 @@ spring:
       value-deserializer: io.confluent.kafka.serializers.KafkaAvroDeserializer
       group-id: account-processor
       auto-offset-reset: earliest
+
+    streams:
+      application-id: account-balance-app
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/genai_kafka
+    username: postgres
+    password: postgres
+
+  jpa:
+    hibernate:
+      ddl-auto: update       # TODO: validate in prod
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+server:
+  error:
+    include-message: always
+
+

@@ -1,102 +1,239 @@
-# Kafka Avro POC — Spring Boot Producer & Consumer with Schema Registry
+# GenAI + Kafka + Agentic Streaming POC
 
-This project is a **minimal end-to-end example** of:
+Real-time Account Event Processing with GenAI Summaries, Kafka Streams KTable, and React UI
 
-- Spring Boot microservice exposing simple **REST endpoints**
-- Producing and consuming **Kafka messages using Avro**
-- Integrating with **Confluent Schema Registry**
-- Preserving **ordering per account** using the Kafka message key
+This project is a fully functional end-to-end streaming architecture that ingests account events, computes running balances via Kafka Streams, generates intelligent GenAI summaries, classifies risk behavior, and stores normalized summaries in Postgres.
 
-Everything runs **locally** using `docker-compose` (Kafka + Schema Registry) and a single Spring Boot app that contains both the producer and consumer.
+# A lightweight React UI fetches account summaries to display a human-readable history.
 
----
+# Technologies Used
+Backend
+Component	Tech
+Runtime	Java 21, Spring Boot 3
+Messaging	Kafka 7.x (Confluent images)
+Schema	Avro + Schema Registry
+Stream Processing	Kafka Streams (KTable)
+Data Store	PostgreSQL 15
+AI / LLM	Custom GenAIClient using OpenAI API (or local)
+Build tool	Gradle
+Frontend
+Component	Tech
+UI Framework	React + Vite
+HTTP	axios
+Infrastructure
 
-## 🔍 High-Level Flow
+Docker Compose (Kafka stack + Postgres)
 
-1. A client calls the REST API (e.g. `POST /accounts/ACC123/credit?amount=100`).
-2. The Spring Boot controller builds an **Avro `AccountEvent`** object.
-3. The producer uses **KafkaAvroSerializer** to:
-    - register or fetch the schema in **Schema Registry**
-    - send the message to Kafka topic `account-events`
-4. Kafka routes the message to a **partition based on `accountId`**.
-5. The `@KafkaListener` consumer reads `AccountEvent` from Kafka, in order per `accountId`.
-6. The consumer updates an **in-memory balance map** and logs the new balance.
-
----
-
-## 🧩 Sequence Diagram
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Client
-    participant ProducerAPI as Producer Service (REST)
-    participant ProducerSvc as AccountEventProducer
-    participant Kafka as Kafka Broker
-    participant SchemaReg as Schema Registry
-    participant ConsumerSvc as AccountEventConsumer
-
-    Client->>ProducerAPI: HTTP POST /accounts/{id}/credit|debit
-    ProducerAPI->>ProducerSvc: Build AccountEvent (Avro)
-    ProducerSvc->>SchemaReg: Register/fetch schema (by ID)
-    ProducerSvc->>Kafka: send(key=accountId, value=AccountEvent)
-    Kafka-->>ConsumerSvc: Deliver AccountEvent\n(partitioned by accountId)
-    ConsumerSvc->>ConsumerSvc: Update in-memory balance per accountId
-    ConsumerSvc-->>ConsumerSvc: Log new balance
+# Folder Structure
 ```
-
-Project Structure (simplified)
-```
-.
-├── build.gradle.kts
-├── docker-compose.yml
-├── src
-│   └── main
-│       ├── avro
-│       │   └── account-event.avsc
-│       ├── java
-│       │   └── com/viana/poc
-│       │       ├── KafkaAvroPocApplication.java
-│       │       ├── config
-│       │       │   └── KafkaProducerConfig.java
-│       │       ├── service
-│       │       │   ├── AccountEventProducer.java
-│       │       │   └── AccountEventConsumer.java
-│       │       └── controller
-│       │           └── AccountController.java
-│       └── resources
-│           └── application.yml
+kafka-avro-genai-streaming-poc/
+│
+├── account-service/              # Spring Boot app
+│   ├── src/main/java/com/viana/poc
+│   │   ├── controller/           # REST endpoints
+│   │   ├── entity/               # JPA entities
+│   │   ├── repository/           # JPA repositories
+│   │   ├── streams/              # Kafka Stream processor (KTable)
+│   │   ├── service/              # GenAI + Kafka logic
+│   │   ├── genai/                # GenAI client, request/response
+│   │   └── constants/
+│   └── resources/
+│       ├── application.yml
+│       └── avro schemas
+│
+├── docker/
+│   └── docker-compose.yml        # Kafka, Zookeeper, Schema Registry, Postgres
+│
+├── account-ui/
+│   └── src/App.jsx               # React UI
+│
 └── README.md
-
 ```
-## Running the stack
+# System Architecture (High-Level)
+End-to-end Flow
 
-### 1. Start Kafka + Schema Registry
+User sends a credit or debit event via REST.
 
-```bash
-docker-compose up -d
-# services: zookeeper, kafka, schema-registry
-docker ps   # verify containers are running
+Event is serialized as Avro and published to Kafka topic account-events.
+
+Kafka Streams KTable maintains a running balance per account.
+
+When balance updates, a downstream consumer:
+
+Calls GenAI to interpret the event.
+
+Produces an agentic summary, classification, and risk level.
+
+Stores the result in Postgres.
+
+The React UI fetches /summaries/{accountId} and displays results.
+
+# Mermaid Architecture Diagram
 ```
-## Run the Spring Boot app
+flowchart LR
+
+subgraph User
+A1[POST /accounts/{id}/credit]
+A2[POST /accounts/{id}/debit]
+A3[UI Load Summaries]
+end
+
+subgraph SpringBoot
+C1[AccountController]
+C2[AccountEventProducer]
+C3[AccountProcessingService<br/>GenAIClient]
+C4[AccountSummaryController]
+end
+
+subgraph Kafka
+K1[(account-events)]
+K2[(account-balance-store-changelog)]
+K3>KTable: account-balance-store]
+end
+
+subgraph StreamApp
+S1[Kafka Streams Processor<br/>Balance Aggregation]
+end
+
+subgraph Postgres
+DB[(account_summaries table)]
+end
+
+A1 --> C1 --> C2 --> K1
+A2 --> C1 --> C2 --> K1
+
+K1 --> S1 --> K3 --> C3
+C3 --> DB
+
+A3 --> C4 --> DB --> A3
 ```
+# Components Explained
+1. Event Producer (AccountEventProducer)
+
+Publishes Avro-encoded event to Kafka topic account-events.
+
+Calls GenAI to generate human-readable summaries.
+
+2. Kafka Streams State Store (KTable)
+
+Maintains real-time account balances:
+
+"groupByKey().aggregate(...)" → state store → changelog topic
+
+
+State is recovered on restart.
+
+3. Agentic GenAI Processing
+
+AccountProcessingService:
+
+Receives the event + computed balance
+
+Sends a structured request to GenAI
+
+The AI:
+
+Interprets the event
+
+Generates a natural-language summary
+
+Classifies behavior (NORMAL / SUSPICIOUS)
+
+Assigns a risk score
+
+Saves the result in Postgres
+
+4. UI (React)
+
+Calls backend: GET http://localhost:8080/summaries/ACC123
+
+Displays all summaries for the account
+
+# End-to-End Testing
+## 1. Start the environment
+cd docker
+docker compose up -d
+
+
+You should have:
+
+Kafka on port 29092
+
+Schema Registry on 8081
+
+Postgres on 5432
+
+## 2. Start Spring Boot app
+cd account-service
 ./gradlew bootRun
-```
-The app will start on http://localhost:8080.
 
 
-## Test the endpoints
+Runs on http://localhost:8080
 
-Send events (Postman or curl):
-```
-# CREDIT
-curl -X POST "http://localhost:8080/accounts/ACC123/credit?amount=100"
+## 3. Start UI
+cd account-ui
+npm install
+npm run dev
 
-# DEBIT
-curl -X POST "http://localhost:8080/accounts/ACC123/debit?amount=50"
-```
 
-Each call produces an Avro AccountEvent to the account-events topic,
-and the consumer logs the new balance, e.g.:
+Open browser:
 
-Event CREDIT for account ACC123 ? new balance = 100.00
+http://localhost:5174
+
+# Testing via REST (Postman or curl)
+Credit event
+curl
+curl -X POST "http://localhost:8080/accounts/ACC123/credit?amount=50"
+
+Postman
+
+POST → http://localhost:8080/accounts/ACC123/credit?amount=50
+
+Debit event
+curl -X POST "http://localhost:8080/accounts/ACC123/debit?amount=20"
+
+Check summaries in Postgres
+
+Inside container:
+
+docker exec -it postgres psql -U postgres genai_kafka
+
+select * from account_summaries order by id desc;
+
+# Testing the UI
+
+Open:
+http://localhost:5174
+
+Input: ACC123
+
+Click Load summaries
+
+You should see records like:
+
+Created: 2025-12-09
+Classification: NORMAL (risk: 50)
+Summary: A credit of $50 was made...
+
+# Agentic Behavior Testing
+
+To verify GenAI decisions:
+
+Normal event
+POST /accounts/ACC123/credit?amount=50
+
+Suspicious event (negative amount)
+POST /accounts/ACC123/credit?amount=-10
+
+
+## Expected behavior:
+
+GenAI flags unusual behavior
+
+Risk score increases
+
+Summary explains anomaly
+
+Stored in Postgres
+
+Visible in UI
